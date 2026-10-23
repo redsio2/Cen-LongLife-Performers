@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDate, manAge } from "@/lib/date";
 import { ATTACHMENT_CATEGORIES, type Attachment, type Performer } from "@/lib/performer";
-import { EMPTY_QUERY, filterPerformers, isEmptyQuery, type PerformerQuery } from "@/lib/search";
+import { EMPTY_QUERY, filterPerformers, isEmptyQuery, queryProblems, type PerformerQuery } from "@/lib/search";
 import { listPerformers } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
 import { FileThumb } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
-import { SearchPanel } from "./SearchPanel";
+import { fieldClass, SearchPanel } from "./SearchPanel";
 import { TypeBadge } from "./TypeBadge";
 
 type RefMode = "today" | "air" | "custom";
@@ -35,24 +35,30 @@ export function PerformerList() {
   }, []);
 
   const today = useToday();
-  const referenceFor = (p: Performer) =>
-    refMode === "air" ? p.airDate : refMode === "custom" ? refDate || today : today;
+  const referenceFor = useCallback(
+    (p: Performer) => (refMode === "air" ? p.airDate : refMode === "custom" ? refDate || today : today),
+    [refMode, refDate, today],
+  );
   const referenceLabel =
     refMode === "air" ? "방송일 기준" : refMode === "custom" ? `${formatDate(refDate || today)} 기준` : "오늘 기준";
 
-  const shown = performers ? filterPerformers(performers, query, referenceFor) : [];
+  const shown = useMemo(
+    () => (performers ? filterPerformers(performers, query, referenceFor) : []),
+    [performers, query, referenceFor],
+  );
+  const resetQuery = () => setQuery(EMPTY_QUERY);
   const total = performers?.length ?? 0;
   const searching = !isEmptyQuery(query);
 
   return (
     <section>
-      <SearchPanel query={query} onChange={setQuery}>
+      <SearchPanel query={query} onChange={setQuery} onReset={resetQuery}>
         <label htmlFor="ref-mode">만 나이 기준</label>
         <select
           id="ref-mode"
           value={refMode}
           onChange={(e) => setRefMode(e.target.value as RefMode)}
-          className="rounded-lg border border-line bg-surface px-2 py-1.5 text-ink"
+          className={fieldClass}
         >
           <option value="today">오늘</option>
           <option value="air">각 방송일</option>
@@ -64,7 +70,7 @@ export function PerformerList() {
             aria-label="기준 날짜"
             value={refDate || today}
             onChange={(e) => setRefDate(e.target.value)}
-            className="rounded-lg border border-line bg-surface px-2 py-1.5 text-ink"
+            className={fieldClass}
           />
         )}
       </SearchPanel>
@@ -100,9 +106,10 @@ export function PerformerList() {
       {searching && total > 0 && shown.length === 0 && (
         <div className="rounded-xl border border-dashed border-line px-4 py-10 text-center text-muted">
           <p>조건에 맞는 출연자가 없습니다.</p>
+          {queryProblems(query).length > 0 && <p className="mt-1">검색 영역의 빨간 안내를 확인해 주세요.</p>}
           <button
             type="button"
-            onClick={() => setQuery(EMPTY_QUERY)}
+            onClick={resetQuery}
             className="mt-2 font-semibold text-accent underline underline-offset-4"
           >
             조건 초기화
