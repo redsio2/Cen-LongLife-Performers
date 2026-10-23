@@ -2,9 +2,10 @@
 
 import type { ReactNode } from "react";
 import { PERFORMER_TYPES, type PerformerType } from "@/lib/performer";
-import { EMPTY_QUERY, isEmptyQuery, type PerformerQuery } from "@/lib/search";
+import { isEmptyQuery, queryProblems, type PerformerQuery } from "@/lib/search";
 
-const field = "min-w-0 rounded-lg border border-line bg-surface px-2 py-1.5 text-ink";
+/** 검색 영역의 입력 칸 공통 모양 */
+export const fieldClass = "min-w-0 rounded-lg border border-line bg-surface px-2 py-1.5 text-ink";
 
 function Range({
   label,
@@ -31,10 +32,11 @@ function Range({
         type={type}
         inputMode={type === "number" ? "numeric" : undefined}
         min={type === "number" ? 0 : undefined}
+        step={type === "number" ? 1 : undefined}
         aria-label={`${label} 시작`}
         value={from}
         onChange={(e) => onFrom(e.target.value)}
-        className={`${field} ${width}`}
+        className={`${fieldClass} ${width}`}
       />
       {unit}
       <span className="text-muted">~</span>
@@ -42,10 +44,11 @@ function Range({
         type={type}
         inputMode={type === "number" ? "numeric" : undefined}
         min={type === "number" ? 0 : undefined}
+        step={type === "number" ? 1 : undefined}
         aria-label={`${label} 끝`}
         value={to}
         onChange={(e) => onTo(e.target.value)}
-        className={`${field} ${width}`}
+        className={`${fieldClass} ${width}`}
       />
       {unit}
     </div>
@@ -55,10 +58,12 @@ function Range({
 export function SearchPanel({
   query,
   onChange,
+  onReset,
   children,
 }: {
   query: PerformerQuery;
   onChange: (q: PerformerQuery) => void;
+  onReset: () => void;
   /** 만 나이 기준일 선택 칸 */
   children?: ReactNode;
 }) {
@@ -68,15 +73,17 @@ export function SearchPanel({
   const toggleType = (t: PerformerType) =>
     set("types")(query.types.includes(t) ? query.types.filter((x) => x !== t) : [...query.types, t]);
 
+  const problems = queryProblems(query);
+
   return (
     <search className="mt-5 grid gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 text-[13px]">
       <input
         type="search"
         aria-label="검색어"
-        placeholder="이름, 아이템, 유형, 회차(예: 12회)로 검색"
+        placeholder="이름, 아이템, 유형, 지인 메모, 회차(예: 12회)로 검색"
         value={query.keyword}
         onChange={(e) => set("keyword")(e.target.value)}
-        className={`${field} w-full px-3 py-2 text-[15px]`}
+        className={`${fieldClass} w-full px-3 py-2 text-[15px]`}
       />
 
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="출연자 유형">
@@ -128,12 +135,20 @@ export function SearchPanel({
         />
       </div>
 
+      {problems.length > 0 && (
+        <ul role="alert" className="grid gap-0.5 text-danger">
+          {problems.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-muted">{children}</div>
         <button
           type="button"
           disabled={isEmptyQuery(query)}
-          onClick={() => onChange(EMPTY_QUERY)}
+          onClick={onReset}
           className="rounded-lg border border-line px-3 py-1.5 font-semibold text-ink disabled:opacity-40"
         >
           조건 초기화
