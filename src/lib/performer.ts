@@ -34,9 +34,21 @@ export type Performer = {
   /** YYYY-MM-DD */
   birth: string;
   attachments: Attachment[];
+  /** 수정했을 때만 */
+  updatedAt?: number;
 };
 
-export type PerformerInput = Omit<Performer, "id" | "createdAt" | "attachments">;
+/** 출연자 한 명에 여러 개 남길 수 있는 메모. 출연자와 따로 저장하고 performerId로 연결한다. */
+export type Memo = {
+  id: string;
+  performerId: string;
+  body: string;
+  createdAt: number;
+  /** 수정했을 때만 */
+  updatedAt?: number;
+};
+
+export type PerformerInput = Omit<Performer, "id" | "createdAt" | "updatedAt" | "attachments">;
 export type PerformerErrors = Partial<Record<keyof PerformerInput, string>>;
 
 export function validatePerformer(v: PerformerInput, today: string): PerformerErrors {

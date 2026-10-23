@@ -7,6 +7,8 @@ import { ATTACHMENT_CATEGORIES, type Attachment, type Performer } from "@/lib/pe
 import { EMPTY_QUERY, filterPerformers, isEmptyQuery, type PerformerQuery } from "@/lib/search";
 import { listPerformers } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
+import { PerformerActions } from "./PerformerActions";
+import { PerformerMemos } from "./PerformerMemos";
 import { FileThumb } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
 import { SearchPanel } from "./SearchPanel";
@@ -131,6 +133,11 @@ export function PerformerList() {
                 <span className="font-mono text-sm" title={referenceLabel}>
                   {age == null || age < 0 ? "만 나이 -" : `만 ${age}세`}
                 </span>
+                <PerformerActions
+                  performerId={p.id}
+                  name={p.name}
+                  onDeleted={() => setPerformers((prev) => prev?.filter((x) => x.id !== p.id) ?? null)}
+                />
               </div>
               <div className="min-w-0 break-words">
                 <b className="mr-1.5 text-[13px] font-medium text-muted">아이템</b>
@@ -174,6 +181,7 @@ export function PerformerList() {
                   })}
                 </div>
               )}
+              <PerformerMemos performerId={p.id} />
             </article>
           );
         })}
