@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatDate, manAge } from "@/lib/date";
 import { ATTACHMENT_CATEGORIES, type Attachment, type Performer } from "@/lib/performer";
+import { EMPTY_QUERY, filterPerformers, isEmptyQuery, type PerformerQuery } from "@/lib/search";
 import { listPerformers } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
 import { FileThumb } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
+import { SearchPanel } from "./SearchPanel";
 import { TypeBadge } from "./TypeBadge";
 
 type RefMode = "today" | "air" | "custom";
@@ -20,6 +22,7 @@ export function PerformerList() {
   const [loadError, setLoadError] = useState(false);
   const [refMode, setRefMode] = useState<RefMode>("today");
   const [refDate, setRefDate] = useState("");
+  const [query, setQuery] = useState<PerformerQuery>(EMPTY_QUERY);
   const [viewing, setViewing] = useState<{ blob: Blob; caption: string } | null>(null);
 
   useEffect(() => {
@@ -37,34 +40,46 @@ export function PerformerList() {
   const referenceLabel =
     refMode === "air" ? "방송일 기준" : refMode === "custom" ? `${formatDate(refDate || today)} 기준` : "오늘 기준";
 
+  const shown = performers ? filterPerformers(performers, query, referenceFor) : [];
+  const total = performers?.length ?? 0;
+  const searching = !isEmptyQuery(query);
+
   return (
     <section>
-      <div className="mt-5 mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="font-semibold">
-          등록된 출연자 <b className="font-mono text-accent">{performers?.length ?? 0}</b>명 · 최신 등록순
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
-          <label htmlFor="ref-mode">만 나이 기준</label>
-          <select
-            id="ref-mode"
-            value={refMode}
-            onChange={(e) => setRefMode(e.target.value as RefMode)}
+      <SearchPanel query={query} onChange={setQuery}>
+        <label htmlFor="ref-mode">만 나이 기준</label>
+        <select
+          id="ref-mode"
+          value={refMode}
+          onChange={(e) => setRefMode(e.target.value as RefMode)}
+          className="rounded-lg border border-line bg-surface px-2 py-1.5 text-ink"
+        >
+          <option value="today">오늘</option>
+          <option value="air">각 방송일</option>
+          <option value="custom">날짜 지정</option>
+        </select>
+        {refMode === "custom" && (
+          <input
+            type="date"
+            aria-label="기준 날짜"
+            value={refDate || today}
+            onChange={(e) => setRefDate(e.target.value)}
             className="rounded-lg border border-line bg-surface px-2 py-1.5 text-ink"
-          >
-            <option value="today">오늘</option>
-            <option value="air">각 방송일</option>
-            <option value="custom">날짜 지정</option>
-          </select>
-          {refMode === "custom" && (
-            <input
-              type="date"
-              aria-label="기준 날짜"
-              value={refDate || today}
-              onChange={(e) => setRefDate(e.target.value)}
-              className="rounded-lg border border-line bg-surface px-2 py-1.5 text-ink"
-            />
-          )}
-        </div>
+          />
+        )}
+      </SearchPanel>
+
+      <div className="mt-5 mb-3 font-semibold" aria-live="polite">
+        {searching ? (
+          <>
+            검색 결과 <b className="font-mono text-accent">{shown.length}</b>명
+            <span className="font-normal text-muted"> / 전체 {total}명</span> · 최신 등록순
+          </>
+        ) : (
+          <>
+            등록된 출연자 <b className="font-mono text-accent">{total}</b>명 · 최신 등록순
+          </>
+        )}
       </div>
 
       {loadError && (
@@ -82,8 +97,21 @@ export function PerformerList() {
         </div>
       )}
 
+      {searching && total > 0 && shown.length === 0 && (
+        <div className="rounded-xl border border-dashed border-line px-4 py-10 text-center text-muted">
+          <p>조건에 맞는 출연자가 없습니다.</p>
+          <button
+            type="button"
+            onClick={() => setQuery(EMPTY_QUERY)}
+            className="mt-2 font-semibold text-accent underline underline-offset-4"
+          >
+            조건 초기화
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-2.5">
-        {performers?.map((p) => {
+        {shown.map((p) => {
           const age = manAge(p.birth, referenceFor(p));
           return (
             <article
