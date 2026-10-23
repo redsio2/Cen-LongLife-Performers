@@ -37,3 +37,8 @@ export function formatSize(bytes: number): string {
     ? `${Math.max(1, Math.round(bytes / 1024))}KB`
     : `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
+
+/** 26. 10. 23. 오전 10:18 */
+export function formatDateTime(ms: number): string {
+  return new Date(ms).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}

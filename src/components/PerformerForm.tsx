@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import { formatDate, formatSize, manAge } from "@/lib/date";
@@ -9,26 +10,48 @@ import {
   PERFORMER_TYPES,
   validatePerformer,
   type AttachmentCategory,
+  type Memo,
+  type Performer,
   type PerformerErrors,
   type PerformerInput,
   type PerformerType,
 } from "@/lib/performer";
-import { addPerformer } from "@/lib/store";
+import { newId, now } from "@/lib/ids";
+import { savePerformer } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
 import { FileThumb } from "./FileThumb";
+import { MemoEditor } from "./MemoEditor";
 
-const EMPTY: Record<AttachmentCategory, File[]> = { photo: [], id: [], doc: [] };
+/** 폼에 올려 둔 첨부파일. 새로 고른 파일과 이미 저장된 파일을 같은 모양으로 다룬다. */
+type FileItem = { name: string; size: number; type: string; blob: Blob };
+type FileMap = Record<AttachmentCategory, FileItem[]>;
+
+const EMPTY: FileMap = { photo: [], id: [], doc: [] };
+
+function filesOf(performer?: Performer): FileMap {
+  if (!performer) return EMPTY;
+  const map: FileMap = { photo: [], id: [], doc: [] };
+  for (const { category, ...item } of performer.attachments) map[category].push(item);
+  return map;
+}
 
 const inputClass =
   "w-full rounded-lg border border-line bg-bg px-3 py-2.5 text-ink aria-invalid:border-danger";
 
-export function PerformerForm() {
+/** initial을 넘기면 그 출연자를 수정하는 폼이 된다. */
+export function PerformerForm({ initial }: { initial?: { performer: Performer; memos: Memo[] } }) {
+  const editing = initial?.performer;
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [type, setType] = useState<PerformerType | "">("");
-  const [birth, setBirth] = useState("");
-  const [airDate, setAirDate] = useState("");
-  const [files, setFiles] = useState(EMPTY);
+  const [type, setType] = useState<PerformerType | "">(editing?.type ?? "");
+  // 유형을 바꿨다가 돌아와도 적어 둔 내용이 남도록 칸이 닫혀도 값을 들고 있는다.
+  const [typeEtc, setTypeEtc] = useState(editing?.typeEtc ?? "");
+  const [friendMemo, setFriendMemo] = useState(editing?.friendMemo ?? "");
+  const [birth, setBirth] = useState(editing?.birth ?? "");
+  const [airDate, setAirDate] = useState(editing?.airDate ?? "");
+  const [files, setFiles] = useState<FileMap>(() => filesOf(editing));
+  const [memos, setMemos] = useState<Memo[]>(initial?.memos ?? []);
+  const [memoDraft, setMemoDraft] = useState("");
   const [errors, setErrors] = useState<PerformerErrors>({});
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
@@ -37,11 +60,11 @@ export function PerformerForm() {
 
   function addFiles(key: AttachmentCategory, list: FileList | null) {
     if (!list) return;
-    const ok: File[] = [];
+    const ok: FileItem[] = [];
     const skipped: string[] = [];
     for (const f of Array.from(list)) {
       if (f.size > MAX_FILE_SIZE) skipped.push(f.name);
-      else ok.push(f);
+      else ok.push({ name: f.name, size: f.size, type: f.type, blob: f });
     }
     setFiles((prev) => ({ ...prev, [key]: [...prev[key], ...ok] }));
     setNotice(skipped.length ? `10MB를 넘는 파일은 추가하지 않았습니다: ${skipped.join(", ")}` : "");
@@ -61,9 +84,13 @@ export function PerformerForm() {
   function reset() {
     formRef.current?.reset();
     setType("");
+    setTypeEtc("");
+    setFriendMemo("");
     setBirth("");
     setAirDate("");
     setFiles(EMPTY);
+    setMemos([]);
+    setMemoDraft("");
     setErrors({});
     setNotice("");
   }
@@ -78,8 +105,8 @@ export function PerformerForm() {
       item: text("item"),
       name: text("name"),
       type: type as PerformerType,
-      typeEtc: type === "기타" ? text("typeEtc") : "",
-      friendMemo: type === "지인" ? text("friendMemo") : "",
+      typeEtc: type === "기타" ? typeEtc.trim() : "",
+      friendMemo: type === "지인" ? friendMemo.trim() : "",
       birth,
     };
     const found = validatePerformer(input, today);
@@ -92,12 +119,22 @@ export function PerformerForm() {
 
     setSaving(true);
     try {
-      await addPerformer(
-        input,
-        ATTACHMENT_CATEGORIES.flatMap((c) =>
-          files[c.key].map((f) => ({ category: c.key, name: f.name, size: f.size, type: f.type, blob: f })),
-        ),
-      );
+      const id = editing?.id ?? newId();
+      const performer: Performer = {
+        ...input,
+        id,
+        createdAt: editing?.createdAt ?? now(),
+        ...(editing && { updatedAt: now() }),
+        attachments: ATTACHMENT_CATEGORIES.flatMap((c) => files[c.key].map((f) => ({ category: c.key, ...f }))),
+      };
+      // 메모 칸에 적기만 하고 "메모 추가"를 누르지 않은 내용도 함께 저장한다.
+      const pending = memoDraft.trim()
+        ? [{ id: newId(), performerId: id, body: memoDraft.trim(), createdAt: now() }]
+        : [];
+      await savePerformer(performer, [...pending, ...memos]);
+      // 다른 화면으로 가도 이 화면은 숨겨진 채 상태가 남으므로, 다음 등록을 위해 비워 둔다.
+      if (!editing) reset();
+      setSaving(false);
       router.push("/");
     } catch {
       setNotice("저장하지 못했습니다. 첨부파일 용량을 줄이거나 사생활 보호 모드가 아닌 창에서 다시 시도해 주세요.");
@@ -122,6 +159,7 @@ export function PerformerForm() {
                 min={1}
                 inputMode="numeric"
                 placeholder="128"
+                defaultValue={editing?.episode}
                 aria-invalid={!!errors.episode}
                 className={inputClass}
               />
@@ -145,6 +183,7 @@ export function PerformerForm() {
             name="item"
             type="text"
             placeholder="예: 무릎 관절 회복 운동, 혈당 관리 식단"
+            defaultValue={editing?.item}
             aria-invalid={!!errors.item}
             className={inputClass}
           />
@@ -159,6 +198,7 @@ export function PerformerForm() {
             type="text"
             autoComplete="off"
             placeholder="홍길동"
+            defaultValue={editing?.name}
             aria-invalid={!!errors.name}
             className={inputClass}
           />
@@ -189,8 +229,9 @@ export function PerformerForm() {
           </div>
           {type === "기타" && (
             <input
-              name="typeEtc"
               type="text"
+              value={typeEtc}
+              onChange={(e) => setTypeEtc(e.target.value)}
               aria-label="기타 유형"
               placeholder="기타 유형을 적어 주세요 (예: 전문의, 가족)"
               autoFocus
@@ -199,8 +240,9 @@ export function PerformerForm() {
           )}
           {type === "지인" && (
             <textarea
-              name="friendMemo"
               rows={2}
+              value={friendMemo}
+              onChange={(e) => setFriendMemo(e.target.value)}
               aria-label="지인 메모"
               placeholder="누구의 지인인지, 섭외 경로 등을 적어 주세요 (예: 김OO 작가 지인, 2025년 체험단 소개)"
               autoFocus
@@ -267,6 +309,25 @@ export function PerformerForm() {
         <p className="text-xs text-muted">파일은 이 브라우저에만 저장됩니다. 파일 하나당 최대 10MB.</p>
       </Section>
 
+      <Section title="메모">
+        <MemoEditor
+          memos={memos}
+          draft={memoDraft}
+          onDraftChange={setMemoDraft}
+          onAdd={() => {
+            setMemos((prev) => [
+              { id: newId(), performerId: editing?.id ?? "", body: memoDraft.trim(), createdAt: now() },
+              ...prev,
+            ]);
+            setMemoDraft("");
+          }}
+          onEdit={(id, body) =>
+            setMemos((prev) => prev.map((m) => (m.id === id ? { ...m, body, updatedAt: now() } : m)))
+          }
+          onDelete={(id) => setMemos((prev) => prev.filter((m) => m.id !== id))}
+        />
+      </Section>
+
       {notice && (
         <p role="status" className="rounded-lg bg-accent-soft px-3 py-2.5 text-[13px] text-ink">
           {notice}
@@ -274,19 +335,25 @@ export function PerformerForm() {
       )}
 
       <div className="flex flex-wrap justify-end gap-2.5">
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-[9px] border border-line bg-surface px-5 py-2.5 font-semibold"
-        >
-          초기화
-        </button>
+        {editing ? (
+          <Link href="/" className="rounded-[9px] border border-line bg-surface px-5 py-2.5 font-semibold">
+            취소
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded-[9px] border border-line bg-surface px-5 py-2.5 font-semibold"
+          >
+            초기화
+          </button>
+        )}
         <button
           type="submit"
           disabled={saving}
           className="rounded-[9px] border border-accent bg-accent px-5 py-2.5 font-semibold text-accent-ink disabled:cursor-progress disabled:opacity-60"
         >
-          {saving ? "저장하는 중…" : "출연자 등록"}
+          {saving ? "저장하는 중…" : editing ? "수정 내용 저장" : "출연자 등록"}
         </button>
       </div>
     </form>
@@ -340,7 +407,7 @@ function DropZone({
   onRemove,
 }: {
   category: (typeof ATTACHMENT_CATEGORIES)[number];
-  files: File[];
+  files: FileItem[];
   onAdd: (list: FileList | null) => void;
   onRemove: (index: number) => void;
 }) {
@@ -385,7 +452,7 @@ function DropZone({
         <ul className="grid gap-1.5">
           {files.map((f, i) => (
             <li key={`${f.name}-${i}`} className="flex min-w-0 items-center gap-2 text-[13px]">
-              <FileThumb blob={f} name={f.name} />
+              <FileThumb blob={f.blob} name={f.name} />
               <span className="min-w-0 flex-1 truncate" title={f.name}>
                 {f.name}
               </span>
