@@ -29,6 +29,8 @@ export type Performer = {
   type: PerformerType;
   /** 유형이 "기타"일 때 직접 적은 유형 */
   typeEtc: string;
+  /** 유형이 "지인"일 때 남기는 메모 (예: 누구의 지인인지). 이 필드가 생기기 전 기록에는 없다. */
+  friendMemo?: string;
   /** YYYY-MM-DD */
   birth: string;
   attachments: Attachment[];

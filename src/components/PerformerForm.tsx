@@ -79,6 +79,7 @@ export function PerformerForm() {
       name: text("name"),
       type: type as PerformerType,
       typeEtc: type === "기타" ? text("typeEtc") : "",
+      friendMemo: type === "지인" ? text("friendMemo") : "",
       birth,
     };
     const found = validatePerformer(input, today);
@@ -194,6 +195,16 @@ export function PerformerForm() {
               placeholder="기타 유형을 적어 주세요 (예: 전문의, 가족)"
               autoFocus
               className={inputClass}
+            />
+          )}
+          {type === "지인" && (
+            <textarea
+              name="friendMemo"
+              rows={2}
+              aria-label="지인 메모"
+              placeholder="누구의 지인인지, 섭외 경로 등을 적어 주세요 (예: 김OO 작가 지인, 2025년 체험단 소개)"
+              autoFocus
+              className={`${inputClass} resize-y`}
             />
           )}
           {errors.type && <p className="text-xs text-danger">{errors.type}</p>}
