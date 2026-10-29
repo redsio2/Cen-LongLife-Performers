@@ -7,6 +7,7 @@ import {
   ATTACHMENT_CATEGORIES,
   MAX_FILE_SIZE,
   PERFORMER_TYPES,
+  PROGRAM_SUGGESTIONS,
   validatePerformer,
   type AttachmentCategory,
   type PerformerErrors,
@@ -73,6 +74,7 @@ export function PerformerForm() {
     const data = new FormData(e.currentTarget);
     const text = (k: string) => String(data.get(k) ?? "").trim();
     const input: PerformerInput = {
+      program: text("program"),
       episode: Number(text("episode")) || 0,
       airDate,
       item: text("item"),
@@ -81,6 +83,9 @@ export function PerformerForm() {
       typeEtc: type === "기타" ? text("typeEtc") : "",
       friendMemo: type === "지인" ? text("friendMemo") : "",
       birth,
+      disease: text("disease"),
+      fee: text("fee"),
+      memo: text("memo"),
     };
     const found = validatePerformer(input, today);
     setErrors(found);
@@ -111,6 +116,23 @@ export function PerformerForm() {
   return (
     <form ref={formRef} noValidate onSubmit={onSubmit} onChange={clearError} className="mt-5 grid gap-4">
       <Section title="방송 정보">
+        <Field id="program" label="프로그램명" error={errors.program}>
+          <input
+            id="program"
+            name="program"
+            type="text"
+            list="program-suggestions"
+            autoComplete="off"
+            placeholder="예: 인생의 연장전, 질병의 법칙, 중독자들"
+            aria-invalid={!!errors.program}
+            className={inputClass}
+          />
+          <datalist id="program-suggestions">
+            {PROGRAM_SUGGESTIONS.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+        </Field>
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field id="episode" label="방송회차" error={errors.episode}>
             <div className="flex items-center gap-2 text-muted">
@@ -144,7 +166,7 @@ export function PerformerForm() {
             id="item"
             name="item"
             type="text"
-            placeholder="예: 무릎 관절 회복 운동, 혈당 관리 식단"
+            placeholder="예: 파라다이스 그레인, 캡슐레이션 효소"
             aria-invalid={!!errors.item}
             className={inputClass}
           />
@@ -192,7 +214,7 @@ export function PerformerForm() {
               name="typeEtc"
               type="text"
               aria-label="기타 유형"
-              placeholder="기타 유형을 적어 주세요 (예: 전문의, 가족)"
+              placeholder="기타 유형을 적어 주세요 (예: 가족, 보호자)"
               autoFocus
               className={inputClass}
             />
@@ -209,6 +231,18 @@ export function PerformerForm() {
           )}
           {errors.type && <p className="text-xs text-danger">{errors.type}</p>}
         </div>
+
+        <Field id="fee" label="출연료" error={errors.fee}>
+          <input
+            id="fee"
+            name="fee"
+            type="text"
+            autoComplete="off"
+            placeholder="예: 100만원, 지인 출연 포함"
+            aria-invalid={!!errors.fee}
+            className={inputClass}
+          />
+        </Field>
 
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field id="birth" label="생년월일" error={errors.birth}>
@@ -250,6 +284,27 @@ export function PerformerForm() {
             </div>
           </div>
         </div>
+
+        <Field id="disease" label="질병 유형" optional>
+          <input
+            id="disease"
+            name="disease"
+            type="text"
+            autoComplete="off"
+            placeholder="예: 폐암 4기"
+            className={inputClass}
+          />
+        </Field>
+
+        <Field id="memo" label="메모" optional>
+          <textarea
+            id="memo"
+            name="memo"
+            rows={2}
+            placeholder="예: 까다로움, 블랙리스트"
+            className={`${inputClass} resize-y`}
+          />
+        </Field>
       </Section>
 
       <Section title="첨부파일">
@@ -314,18 +369,21 @@ function Field({
   id,
   label,
   error,
+  optional,
   children,
 }: {
   id: string;
   label: string;
   error?: string;
+  /** 꼭 채우지 않아도 되는 칸 */
+  optional?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid min-w-0 gap-1.5">
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
-        <Required />
+        {optional ? <span className="ml-1 text-xs font-normal text-muted">(선택)</span> : <Required />}
       </label>
       {children}
       {error && <p className="text-xs text-danger">{error}</p>}
