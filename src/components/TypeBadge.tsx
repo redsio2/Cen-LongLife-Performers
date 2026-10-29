@@ -4,6 +4,7 @@ const STYLES: Record<PerformerType, string> = {
   악화사례자: "bg-t-worse-bg text-t-worse",
   성공사례자: "bg-t-good-bg text-t-good",
   체험단: "bg-t-trial-bg text-t-trial",
+  의사: "bg-t-doctor-bg text-t-doctor",
   지인: "bg-t-friend-bg text-t-friend",
   기타: "bg-t-etc-bg text-t-etc",
 };

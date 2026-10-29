@@ -17,6 +17,8 @@
   --t-good-bg: #e7f3e6;
   --t-trial: #2457a6;
   --t-trial-bg: #e6eefa;
+  --t-doctor: #6b3fa0;
+  --t-doctor-bg: #f1eafa;
   --t-friend: #9a5a00;
   --t-friend-bg: #fbf0dc;
   --t-etc: #56605f;
@@ -41,6 +43,8 @@
     --t-good-bg: #1c3320;
     --t-trial: #9cbcf0;
     --t-trial-bg: #1a2840;
+    --t-doctor: #c9a8f0;
+    --t-doctor-bg: #2c1f3d;
     --t-friend: #f0c06e;
     --t-friend-bg: #3a2c12;
     --t-etc: #b5c0be;
@@ -65,6 +69,8 @@
   --color-t-good-bg: var(--t-good-bg);
   --color-t-trial: var(--t-trial);
   --color-t-trial-bg: var(--t-trial-bg);
+  --color-t-doctor: var(--t-doctor);
+  --color-t-doctor-bg: var(--t-doctor-bg);
   --color-t-friend: var(--t-friend);
   --color-t-friend-bg: var(--t-friend-bg);
   --color-t-etc: var(--t-etc);

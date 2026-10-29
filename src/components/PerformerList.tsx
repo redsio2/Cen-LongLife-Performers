@@ -132,9 +132,17 @@ export function PerformerList() {
                   {age == null || age < 0 ? "만 나이 -" : `만 ${age}세`}
                 </span>
               </div>
-              <div className="min-w-0 break-words">
-                <b className="mr-1.5 text-[13px] font-medium text-muted">아이템</b>
-                {p.item}
+              <div className="flex min-w-0 flex-wrap gap-x-3.5">
+                {p.program && (
+                  <span className="min-w-0 break-words">
+                    <b className="mr-1.5 text-[13px] font-medium text-muted">프로그램</b>
+                    {p.program}
+                  </span>
+                )}
+                <span className="min-w-0 break-words">
+                  <b className="mr-1.5 text-[13px] font-medium text-muted">아이템</b>
+                  {p.item}
+                </span>
               </div>
               <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-muted tabular-nums">
                 <span>생년월일 {formatDate(p.birth)}</span>
@@ -143,6 +151,28 @@ export function PerformerList() {
                   등록 {new Date(p.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}
                 </span>
               </div>
+              {(p.disease || p.fee) && (
+                <div className="flex min-w-0 flex-wrap gap-x-3.5 text-sm sm:col-start-2">
+                  {p.disease && (
+                    <span className="min-w-0 break-words">
+                      <b className="mr-1.5 text-[13px] font-medium text-muted">질병</b>
+                      {p.disease}
+                    </span>
+                  )}
+                  {p.fee && (
+                    <span className="min-w-0 break-words">
+                      <b className="mr-1.5 text-[13px] font-medium text-muted">출연료</b>
+                      {p.fee}
+                    </span>
+                  )}
+                </div>
+              )}
+              {p.memo && (
+                <p className="mt-1 min-w-0 rounded-lg bg-bg px-2.5 py-1.5 text-[13px] break-words whitespace-pre-line sm:col-start-2">
+                  <b className="mr-1.5 font-medium text-muted">메모</b>
+                  {p.memo}
+                </p>
+              )}
               {p.attachments.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 sm:col-start-2">
                   {p.attachments.map((f, i) => {

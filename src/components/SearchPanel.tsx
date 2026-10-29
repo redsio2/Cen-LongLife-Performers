@@ -73,7 +73,7 @@ export function SearchPanel({
       <input
         type="search"
         aria-label="검색어"
-        placeholder="이름, 아이템, 유형, 회차(예: 12회)로 검색"
+        placeholder="이름, 프로그램, 아이템, 유형, 회차(예: 12회), 질병, 메모로 검색"
         value={query.keyword}
         onChange={(e) => set("keyword")(e.target.value)}
         className={`${field} w-full px-3 py-2 text-[15px]`}
