@@ -24,6 +24,8 @@ export type Attachment = {
 export type Performer = {
   id: string;
   createdAt: number;
+  /** 마지막으로 수정한 때. 수정한 적 없으면 없다. */
+  updatedAt?: number;
   /** 프로그램명 (예: 인생의 연장전). 이 필드가 생기기 전 기록에는 없다. */
   program?: string;
   episode: number;
@@ -48,7 +50,7 @@ export type Performer = {
   attachments: Attachment[];
 };
 
-export type PerformerInput = Omit<Performer, "id" | "createdAt" | "attachments">;
+export type PerformerInput = Omit<Performer, "id" | "createdAt" | "updatedAt" | "attachments">;
 export type PerformerErrors = Partial<Record<keyof PerformerInput, string>>;
 
 export function validatePerformer(v: PerformerInput, today: string): PerformerErrors {

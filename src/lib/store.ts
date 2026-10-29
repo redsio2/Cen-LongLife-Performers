@@ -28,13 +28,37 @@ export async function listPerformers(): Promise<Performer[]> {
   return all.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function addPerformer(input: PerformerInput, attachments: Attachment[]): Promise<void> {
-  const performer: Performer = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), attachments };
+async function write(apply: (store: IDBObjectStore) => void): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(performer);
+    apply(tx.objectStore(STORE));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+export async function addPerformer(input: PerformerInput, attachments: Attachment[]): Promise<void> {
+  const performer: Performer = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), attachments };
+  await write((store) => store.put(performer));
+}
+
+/** 등록일(createdAt)은 그대로 두고 나머지 내용과 첨부파일을 바꾼다. */
+export async function updatePerformer(
+  original: Performer,
+  input: PerformerInput,
+  attachments: Attachment[],
+): Promise<void> {
+  const performer: Performer = {
+    ...input,
+    id: original.id,
+    createdAt: original.createdAt,
+    updatedAt: Date.now(),
+    attachments,
+  };
+  await write((store) => store.put(performer));
+}
+
+export async function deletePerformer(id: string): Promise<void> {
+  await write((store) => store.delete(id));
 }

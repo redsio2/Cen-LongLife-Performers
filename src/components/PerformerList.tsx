@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import { formatDate, manAge } from "@/lib/date";
 import { ATTACHMENT_CATEGORIES, type Attachment, type Performer } from "@/lib/performer";
 import { EMPTY_QUERY, filterPerformers, isEmptyQuery, type PerformerQuery } from "@/lib/search";
-import { listPerformers } from "@/lib/store";
+import { deletePerformer, listPerformers } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
 import { FileThumb } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
+import { PerformerForm } from "./PerformerForm";
 import { SearchPanel } from "./SearchPanel";
 import { TypeBadge } from "./TypeBadge";
 
@@ -24,6 +25,11 @@ export function PerformerList() {
   const [refDate, setRefDate] = useState("");
   const [query, setQuery] = useState<PerformerQuery>(EMPTY_QUERY);
   const [viewing, setViewing] = useState<{ blob: Blob; caption: string } | null>(null);
+  /** 고치는 중인 출연자. 있으면 목록 대신 수정 폼을 보여 준다. */
+  const [editing, setEditing] = useState<Performer | null>(null);
+  /** 삭제를 한 번 더 확인하는 중인 출연자 id */
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     listPerformers()
@@ -34,6 +40,38 @@ export function PerformerList() {
       });
   }, []);
 
+  function startEdit(p: Performer) {
+    setConfirmingDelete(null);
+    setActionError("");
+    setEditing(p);
+    window.scrollTo({ top: 0 });
+  }
+
+  async function finishEdit() {
+    const id = editing?.id;
+    setEditing(null);
+    try {
+      setPerformers(await listPerformers());
+    } catch {
+      setActionError("수정한 내용을 다시 불러오지 못했습니다. 새로고침해 주세요.");
+    }
+    // 목록으로 돌아오면 방금 고친 출연자 카드로 스크롤한다.
+    requestAnimationFrame(() =>
+      document.getElementById(`performer-${id}`)?.scrollIntoView({ block: "center" }),
+    );
+  }
+
+  async function remove(p: Performer) {
+    try {
+      await deletePerformer(p.id);
+      setPerformers((prev) => prev?.filter((x) => x.id !== p.id) ?? null);
+      setConfirmingDelete(null);
+      setActionError("");
+    } catch {
+      setActionError(`${p.name} 출연자를 삭제하지 못했습니다. 다시 시도해 주세요.`);
+    }
+  }
+
   const today = useToday();
   const referenceFor = (p: Performer) =>
     refMode === "air" ? p.airDate : refMode === "custom" ? refDate || today : today;
@@ -43,6 +81,26 @@ export function PerformerList() {
   const shown = performers ? filterPerformers(performers, query, referenceFor) : [];
   const total = performers?.length ?? 0;
   const searching = !isEmptyQuery(query);
+
+  if (editing) {
+    return (
+      <section className="mt-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-bold">
+            출연자 정보 수정 <span className="text-accent">· {editing.name}</span>
+          </h2>
+          <button
+            type="button"
+            onClick={finishEdit}
+            className="text-sm font-semibold text-accent underline underline-offset-4"
+          >
+            목록으로 돌아가기
+          </button>
+        </div>
+        <PerformerForm key={editing.id} performer={editing} onDone={finishEdit} />
+      </section>
+    );
+  }
 
   return (
     <section>
@@ -82,6 +140,12 @@ export function PerformerList() {
         )}
       </div>
 
+      {actionError && (
+        <p role="alert" className="mb-3 rounded-lg bg-accent-soft px-3 py-2.5 text-[13px] text-danger">
+          {actionError}
+        </p>
+      )}
+
       {loadError && (
         <p className="mb-3 rounded-lg bg-accent-soft px-3 py-2.5 text-[13px] text-muted">
           이 브라우저에서 저장된 출연자를 불러오지 못했습니다. 사생활 보호 모드라면 일반 창에서 열어 주세요.
@@ -116,6 +180,7 @@ export function PerformerList() {
           return (
             <article
               key={p.id}
+              id={`performer-${p.id}`}
               className="grid grid-cols-1 gap-x-4 gap-y-1 rounded-xl border border-line bg-surface px-4 py-3.5 sm:grid-cols-[92px_1fr]"
             >
               <div className="flex items-baseline gap-2.5 sm:row-span-3 sm:block sm:border-r sm:border-line sm:pr-3">
@@ -130,6 +195,25 @@ export function PerformerList() {
                 <TypeBadge performer={p} />
                 <span className="font-mono text-sm" title={referenceLabel}>
                   {age == null || age < 0 ? "만 나이 -" : `만 ${age}세`}
+                </span>
+                <span className="ml-auto flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(p)}
+                    aria-label={`${p.name} 수정`}
+                    className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-accent"
+                  >
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(p.id)}
+                    aria-label={`${p.name} 삭제`}
+                    aria-expanded={confirmingDelete === p.id}
+                    className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-danger"
+                  >
+                    삭제
+                  </button>
                 </span>
               </div>
               <div className="flex min-w-0 flex-wrap gap-x-3.5">
@@ -150,6 +234,12 @@ export function PerformerList() {
                 <span>
                   등록 {new Date(p.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}
                 </span>
+                {p.updatedAt && (
+                  <span>
+                    수정{" "}
+                    {new Date(p.updatedAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                )}
               </div>
               {(p.disease || p.fee) && (
                 <div className="flex min-w-0 flex-wrap gap-x-3.5 text-sm sm:col-start-2">
@@ -202,6 +292,32 @@ export function PerformerList() {
                       </span>
                     );
                   })}
+                </div>
+              )}
+              {confirmingDelete === p.id && (
+                <div
+                  role="alert"
+                  className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-danger px-3 py-2 text-[13px] sm:col-span-2"
+                >
+                  <span className="min-w-0 flex-1">
+                    <b>{p.name}</b> 출연자를 삭제할까요? 첨부파일도 함께 지워지고 되돌릴 수 없습니다.
+                  </span>
+                  <span className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(null)}
+                      className="rounded-md border border-line bg-surface px-3 py-1 font-semibold"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(p)}
+                      className="rounded-md border border-danger bg-danger px-3 py-1 font-semibold text-surface"
+                    >
+                      삭제
+                    </button>
+                  </span>
                 </div>
               )}
             </article>
