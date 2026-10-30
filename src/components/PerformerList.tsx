@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatDate, manAge } from "@/lib/date";
+import { canEdit, useMember } from "@/lib/member";
 import { ATTACHMENT_CATEGORIES, type Attachment, type Performer } from "@/lib/performer";
 import { EMPTY_QUERY, filterPerformers, isEmptyQuery, type PerformerQuery } from "@/lib/search";
 import { deletePerformer, listPerformers } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
-import { FileThumb } from "./FileThumb";
+import { FileThumb, useFileUrl } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
 import { PerformerForm } from "./PerformerForm";
 import { SearchPanel } from "./SearchPanel";
@@ -24,21 +25,27 @@ export function PerformerList() {
   const [refMode, setRefMode] = useState<RefMode>("today");
   const [refDate, setRefDate] = useState("");
   const [query, setQuery] = useState<PerformerQuery>(EMPTY_QUERY);
-  const [viewing, setViewing] = useState<{ blob: Blob; caption: string } | null>(null);
+  const [viewing, setViewing] = useState<{ path: string; caption: string } | null>(null);
   /** 고치는 중인 출연자. 있으면 목록 대신 수정 폼을 보여 준다. */
   const [editing, setEditing] = useState<Performer | null>(null);
   /** 삭제를 한 번 더 확인하는 중인 출연자 id */
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
 
+  const member = useMember();
+  const memberId = member?.id;
+  const editable = canEdit(member);
+
+  // 로그인한 뒤에만 불러온다. 회원이 바뀌면 MemberGate가 이 화면을 새로 그린다.
   useEffect(() => {
+    if (!memberId) return;
     listPerformers()
       .then(setPerformers)
       .catch(() => {
         setLoadError(true);
         setPerformers([]);
       });
-  }, []);
+  }, [memberId]);
 
   function startEdit(p: Performer) {
     setConfirmingDelete(null);
@@ -63,7 +70,7 @@ export function PerformerList() {
 
   async function remove(p: Performer) {
     try {
-      await deletePerformer(p.id);
+      await deletePerformer(p);
       setPerformers((prev) => prev?.filter((x) => x.id !== p.id) ?? null);
       setConfirmingDelete(null);
       setActionError("");
@@ -148,16 +155,18 @@ export function PerformerList() {
 
       {loadError && (
         <p className="mb-3 rounded-lg bg-accent-soft px-3 py-2.5 text-[13px] text-muted">
-          이 브라우저에서 저장된 출연자를 불러오지 못했습니다. 사생활 보호 모드라면 일반 창에서 열어 주세요.
+          출연자 목록을 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.
         </p>
       )}
 
       {performers && performers.length === 0 && !loadError && (
         <div className="rounded-xl border border-dashed border-line px-4 py-10 text-center text-muted">
           <p>아직 등록된 출연자가 없습니다.</p>
-          <Link href="/new" className="mt-2 inline-block font-semibold text-accent underline underline-offset-4">
-            첫 출연자 등록하기
-          </Link>
+          {editable && (
+            <Link href="/new" className="mt-2 inline-block font-semibold text-accent underline underline-offset-4">
+              첫 출연자 등록하기
+            </Link>
+          )}
         </div>
       )}
 
@@ -196,25 +205,27 @@ export function PerformerList() {
                 <span className="font-mono text-sm" title={referenceLabel}>
                   {age == null || age < 0 ? "만 나이 -" : `만 ${age}세`}
                 </span>
-                <span className="ml-auto flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(p)}
-                    aria-label={`${p.name} 수정`}
-                    className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-accent"
-                  >
-                    수정
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(p.id)}
-                    aria-label={`${p.name} 삭제`}
-                    aria-expanded={confirmingDelete === p.id}
-                    className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-danger"
-                  >
-                    삭제
-                  </button>
-                </span>
+                {editable && (
+                  <span className="ml-auto flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(p)}
+                      aria-label={`${p.name} 수정`}
+                      className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-accent"
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(p.id)}
+                      aria-label={`${p.name} 삭제`}
+                      aria-expanded={confirmingDelete === p.id}
+                      className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-danger"
+                    >
+                      삭제
+                    </button>
+                  </span>
+                )}
               </div>
               <div className="flex min-w-0 flex-wrap gap-x-3.5">
                 {p.program && (
@@ -265,33 +276,13 @@ export function PerformerList() {
               )}
               {p.attachments.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 sm:col-start-2">
-                  {p.attachments.map((f, i) => {
-                    const cat = categoryLabel(f.category);
-                    const isImage = f.type.startsWith("image/");
-                    const body = (
-                      <>
-                        <FileThumb blob={f.blob} name={f.name} className="size-7" />
-                        <span className="text-muted">{cat}</span>
-                        <span className="max-w-40 truncate">{f.name}</span>
-                      </>
-                    );
-                    const chip =
-                      "inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-bg py-0.5 pr-2 pl-0.5 text-xs";
-                    return isImage ? (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setViewing({ blob: f.blob, caption: `${p.name} · ${cat} · ${f.name}` })}
-                        className={`${chip} cursor-zoom-in`}
-                      >
-                        {body}
-                      </button>
-                    ) : (
-                      <span key={i} className={chip}>
-                        {body}
-                      </span>
-                    );
-                  })}
+                  {p.attachments.map((f) => (
+                    <AttachmentChip
+                      key={f.id}
+                      file={f}
+                      onView={(caption) => setViewing({ path: f.path, caption: `${p.name} · ${caption}` })}
+                    />
+                  ))}
                 </div>
               )}
               {confirmingDelete === p.id && (
@@ -325,7 +316,40 @@ export function PerformerList() {
         })}
       </div>
 
-      {viewing && <ImageViewer {...viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <ImageViewer source={{ path: viewing.path }} caption={viewing.caption} onClose={() => setViewing(null)} />
+      )}
     </section>
+  );
+}
+
+const chipClass =
+  "inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-bg py-0.5 pr-2 pl-0.5 text-xs";
+
+/** 첨부파일 하나. 이미지는 크게 보기, 그 밖의 파일은 새 탭에서 연다. */
+function AttachmentChip({ file, onView }: { file: Attachment; onView: (caption: string) => void }) {
+  const cat = categoryLabel(file.category);
+  const isImage = file.type.startsWith("image/");
+  // 이미지가 아니면 서명된 주소를 미리 받아 두어 링크로 연다.
+  const url = useFileUrl(isImage ? null : { path: file.path });
+  const body = (
+    <>
+      <FileThumb source={{ path: file.path }} name={file.name} type={file.type} className="size-7" />
+      <span className="text-muted">{cat}</span>
+      <span className="max-w-40 truncate">{file.name}</span>
+    </>
+  );
+  if (isImage)
+    return (
+      <button type="button" onClick={() => onView(`${cat} · ${file.name}`)} className={`${chipClass} cursor-zoom-in`}>
+        {body}
+      </button>
+    );
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className={`${chipClass} hover:border-accent`}>
+      {body}
+    </a>
+  ) : (
+    <span className={chipClass}>{body}</span>
   );
 }

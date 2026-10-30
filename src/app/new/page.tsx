@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { RequireRole } from "@/components/MemberGate";
 import { PerformerForm } from "@/components/PerformerForm";
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function NewPerformerPage() {
-  return <PerformerForm />;
+  return (
+    <RequireRole role="editor">
+      <PerformerForm />
+    </RequireRole>
+  );
 }

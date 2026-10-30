@@ -13,21 +13,26 @@ export type AttachmentCategory = (typeof ATTACHMENT_CATEGORIES)[number]["key"];
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+/** 저장된 첨부파일. 파일 자체는 비공개 저장소의 path에 있다. */
 export type Attachment = {
+  id: string;
   category: AttachmentCategory;
   name: string;
   size: number;
   type: string;
-  blob: Blob;
+  path: string;
 };
+
+/** 새로 올릴 첨부파일 */
+export type NewAttachment = { category: AttachmentCategory; file: File };
 
 export type Performer = {
   id: string;
   createdAt: number;
   /** 마지막으로 수정한 때. 수정한 적 없으면 없다. */
   updatedAt?: number;
-  /** 프로그램명 (예: 인생의 연장전). 이 필드가 생기기 전 기록에는 없다. */
-  program?: string;
+  /** 프로그램명 (예: 인생의 연장전) */
+  program: string;
   episode: number;
   /** YYYY-MM-DD */
   airDate: string;
@@ -36,17 +41,16 @@ export type Performer = {
   type: PerformerType;
   /** 유형이 "기타"일 때 직접 적은 유형 */
   typeEtc: string;
-  /** 유형이 "지인"일 때 남기는 메모 (예: 누구의 지인인지). 이 필드가 생기기 전 기록에는 없다. */
-  friendMemo?: string;
+  /** 유형이 "지인"일 때 남기는 메모 (예: 누구의 지인인지) */
+  friendMemo: string;
   /** YYYY-MM-DD */
   birth: string;
-  // 아래 세 필드는 이 필드가 생기기 전 기록에는 없다.
-  /** 출연료. 필수 입력이고 금액과 조건을 자유롭게 적는다 (예: 100만원, 지인 출연 포함) */
-  fee?: string;
+  /** 출연료. 금액과 조건을 자유롭게 적는다 (예: 100만원, 지인 출연 포함) */
+  fee: string;
   /** 질병 유형 (예: 폐암 4기). 선택 입력 */
-  disease?: string;
+  disease: string;
   /** 제작진 메모 (예: 까다로움, 블랙리스트). 선택 입력 */
-  memo?: string;
+  memo: string;
   attachments: Attachment[];
 };
 

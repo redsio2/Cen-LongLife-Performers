@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { useObjectUrl } from "./FileThumb";
+import { useFileUrl, type FileSource } from "./FileThumb";
 
 export function ImageViewer({
-  blob,
+  source,
   caption,
   onClose,
 }: {
-  blob: Blob;
+  source: FileSource;
   caption: string;
   onClose: () => void;
 }) {
-  const url = useObjectUrl(blob);
+  const url = useFileUrl(source);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -27,9 +27,11 @@ export function ImageViewer({
       className="fixed inset-0 z-40 grid cursor-zoom-out place-items-center bg-black/80 p-4"
     >
       <figure className="m-0">
-        {url && (
+        {url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={caption} className="max-h-[85vh] max-w-full rounded-lg" />
+        ) : (
+          <p className="text-[13px] text-white">불러오는 중…</p>
         )}
         <figcaption className="mt-2 text-center text-[13px] text-white">{caption}</figcaption>
       </figure>

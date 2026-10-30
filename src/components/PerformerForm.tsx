@@ -11,6 +11,7 @@ import {
   validatePerformer,
   type Attachment,
   type AttachmentCategory,
+  type NewAttachment,
   type Performer,
   type PerformerErrors,
   type PerformerInput,
@@ -20,8 +21,11 @@ import { addPerformer, updatePerformer } from "@/lib/store";
 import { useToday } from "@/lib/useToday";
 import { FileThumb } from "./FileThumb";
 
-/** 폼에 올려 둔 첨부파일. 새로 고른 파일과 이미 저장된 파일을 같은 모양으로 다룬다. */
-type DraftFile = Omit<Attachment, "category">;
+/** 폼에 올려 둔 첨부파일. 새로 고른 파일(file)과 이미 저장된 파일(saved)을 같은 목록에 둔다. */
+type DraftFile = { name: string; size: number; type: string } & (
+  | { file: File; saved?: undefined }
+  | { saved: Attachment; file?: undefined }
+);
 type DraftFiles = Record<AttachmentCategory, DraftFile[]>;
 
 const EMPTY: DraftFiles = { photo: [], id: [], doc: [] };
@@ -29,7 +33,8 @@ const EMPTY: DraftFiles = { photo: [], id: [], doc: [] };
 function filesOf(performer?: Performer): DraftFiles {
   if (!performer) return EMPTY;
   const files: DraftFiles = { photo: [], id: [], doc: [] };
-  for (const { category, ...f } of performer.attachments) files[category].push(f);
+  for (const a of performer.attachments)
+    files[a.category].push({ name: a.name, size: a.size, type: a.type, saved: a });
   return files;
 }
 
@@ -62,7 +67,7 @@ export function PerformerForm({ performer, onDone }: { performer?: Performer; on
     const skipped: string[] = [];
     for (const f of Array.from(list)) {
       if (f.size > MAX_FILE_SIZE) skipped.push(f.name);
-      else ok.push({ name: f.name, size: f.size, type: f.type, blob: f });
+      else ok.push({ name: f.name, size: f.size, type: f.type, file: f });
     }
     setFiles((prev) => ({ ...prev, [key]: [...prev[key], ...ok] }));
     setNotice(skipped.length ? `10MB를 넘는 파일은 추가하지 않았습니다: ${skipped.join(", ")}` : "");
@@ -115,20 +120,20 @@ export function PerformerForm({ performer, onDone }: { performer?: Performer; on
       return;
     }
 
-    const attachments = ATTACHMENT_CATEGORIES.flatMap((c) =>
-      files[c.key].map((f) => ({ ...f, category: c.key })),
-    );
+    const all = ATTACHMENT_CATEGORIES.flatMap((c) => files[c.key].map((f) => ({ ...f, category: c.key })));
+    const keep = all.flatMap((f) => (f.saved ? [f.saved] : []));
+    const newFiles: NewAttachment[] = all.flatMap((f) => (f.file ? [{ category: f.category, file: f.file }] : []));
     setSaving(true);
     try {
       if (performer) {
-        await updatePerformer(performer, input, attachments);
+        await updatePerformer(performer, input, keep, newFiles);
         onDone?.();
       } else {
-        await addPerformer(input, attachments);
+        await addPerformer(input, newFiles);
         router.push("/");
       }
     } catch {
-      setNotice("저장하지 못했습니다. 첨부파일 용량을 줄이거나 사생활 보호 모드가 아닌 창에서 다시 시도해 주세요.");
+      setNotice("저장하지 못했습니다. 인터넷 연결과 편집 권한을 확인하고 다시 시도해 주세요.");
       setSaving(false);
     }
   }
@@ -353,7 +358,7 @@ export function PerformerForm({ performer, onDone }: { performer?: Performer; on
             />
           ))}
         </div>
-        <p className="text-xs text-muted">파일은 이 브라우저에만 저장됩니다. 파일 하나당 최대 10MB.</p>
+        <p className="text-xs text-muted">파일은 회원만 열 수 있는 저장소에 보관됩니다. 파일 하나당 최대 10MB.</p>
       </Section>
 
       {notice && (
@@ -487,7 +492,11 @@ function DropZone({
         <ul className="grid gap-1.5">
           {files.map((f, i) => (
             <li key={`${f.name}-${i}`} className="flex min-w-0 items-center gap-2 text-[13px]">
-              <FileThumb blob={f.blob} name={f.name} />
+              <FileThumb
+                source={f.file ? { blob: f.file } : { path: f.saved.path }}
+                name={f.name}
+                type={f.type}
+              />
               <span className="min-w-0 flex-1 truncate" title={f.name}>
                 {f.name}
               </span>

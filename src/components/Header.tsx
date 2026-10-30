@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useMember } from "@/lib/member";
+import { ROLE_LABELS, canEdit, signOut, useMember, type Member } from "@/lib/member";
 
-const TABS = [
-  { href: "/", label: "출연자 목록" },
-  { href: "/new", label: "출연자 등록" },
+const TABS: { href: string; label: string; show: (m: Member) => boolean }[] = [
+  { href: "/", label: "출연자 목록", show: () => true },
+  { href: "/new", label: "출연자 등록", show: canEdit },
+  { href: "/admin", label: "회원 관리", show: (m) => m.role === "admin" },
 ];
 
 export function Header() {
@@ -20,7 +21,12 @@ export function Header() {
       {member && (
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
           <span className="text-xs text-muted">
-            <span className="font-mono">{member}</span>
+            <span className="font-mono">{member.number}</span>
+            {member.name && <span className="ml-1">{member.name}</span>}
+            <span className="ml-1">· {ROLE_LABELS[member.role]}</span>
+            <Link href="/account" className="ml-2 font-semibold text-accent underline underline-offset-4">
+              비밀번호 변경
+            </Link>
             <button
               type="button"
               onClick={signOut}
@@ -33,7 +39,7 @@ export function Header() {
             aria-label="화면 이동"
             className="flex gap-1 rounded-[10px] border border-line bg-surface p-1"
           >
-            {TABS.map((tab) => {
+            {TABS.filter((tab) => tab.show(member)).map((tab) => {
               const active = pathname === tab.href;
               return (
                 <Link

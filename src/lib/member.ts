@@ -1,69 +1,146 @@
 "use client";
 
+import { FunctionsHttpError, type AuthError } from "@supabase/supabase-js";
 import { useSyncExternalStore } from "react";
+import { supabase } from "./supabase";
 
 /**
- * 출연자 관리 화면에 들어올 수 있는 회원 등록번호. 회원을 늘리거나 빼려면 이 목록을 고친다.
- * 백엔드가 생기기 전까지 이 목록은 브라우저로 그대로 내려가므로, 화면 접근을 막을 뿐 보안 장치는 아니다.
+ * 회원은 관리자가 발급한 등록번호(CEN-0001~CEN-9999)와 비밀번호로 로그인한다.
+ * 등록번호마다 Supabase Auth 계정이 하나 있고, 이메일 칸에는 아래 형식의 로그인용 주소가 들어간다(메일은 보내지 않는다).
+ * 회원 추가·권한 변경은 관리자 Edge Function(supabase/functions/admin-members)이 한다.
  */
-export const MEMBER_NUMBERS = ["CEN-0001", "CEN-0002", "CEN-0003"];
+const MEMBER_EMAIL_DOMAIN = "cenlonglifeperformers.vercel.app";
+export const FIRST_ADMIN = "CEN-0001";
+export const MIN_PASSWORD = 8;
 
-const KEY = "cen-member";
-const EVENT = "cen-member-change";
+export const ROLES = ["viewer", "editor", "admin"] as const;
+export type Role = (typeof ROLES)[number];
+export const ROLE_LABELS: Record<Role, string> = { viewer: "보기 전용", editor: "편집 가능", admin: "관리자" };
 
-/** 대소문자·공백·하이픈을 무시하고 비교한다. (cen 0001 → CEN0001) */
-const normalize = (s: string) => s.toUpperCase().replace(/[\s-]/g, "");
+export type Member = { id: string; number: string; name: string; role: Role };
 
-/** 목록에 있는 등록번호면 목록에 적힌 그대로 돌려준다. */
-export function findMember(input: string): string | null {
-  const n = normalize(input);
-  return n ? (MEMBER_NUMBERS.find((m) => normalize(m) === n) ?? null) : null;
+/** "cen 12", "CEN0012" 같은 입력도 CEN-0012로 맞춘다. 형식이 틀리면 null. */
+export function normalizeNumber(input: string): string | null {
+  const digits = input.toUpperCase().replace(/^\s*CEN/, "").replace(/[\s-]/g, "");
+  if (!/^\d{1,4}$/.test(digits)) return null;
+  const n = `CEN-${digits.padStart(4, "0")}`;
+  return n === "CEN-0000" ? null : n;
 }
 
-/** 저장소가 막힌 창(사생활 보호 모드 등)에서는 이 탭에서만 기억한다. */
-let memory: string | null = null;
+const emailOf = (number: string) => `${number.toLowerCase()}@${MEMBER_EMAIL_DOMAIN}`;
 
-function read(): string | null {
-  try {
-    // 목록에서 빠진 번호로 들어와 있던 브라우저도 다시 막는다.
-    return findMember(localStorage.getItem(KEY) ?? "");
-  } catch {
-    return memory;
-  }
+export const canEdit = (m: Member | null | undefined) => m?.role === "editor" || m?.role === "admin";
+
+// 로그인한 회원 상태. 아직 확인 전이면 undefined, 로그인하지 않았으면 null.
+let current: Member | null | undefined = undefined;
+const listeners = new Set<() => void>();
+let started = false;
+
+function setCurrent(next: Member | null) {
+  if (JSON.stringify(next) === JSON.stringify(current)) return;
+  current = next;
+  listeners.forEach((l) => l());
+}
+
+async function refresh() {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (!user) return setCurrent(null);
+  const { data: row } = await supabase
+    .from("members")
+    .select("id, number, name, role, active")
+    .eq("id", user.id)
+    .maybeSingle();
+  // 차단된 회원은 로그인되어 있어도 들여보내지 않는다(데이터는 RLS가 막는다).
+  setCurrent(row?.active ? { id: row.id, number: row.number, name: row.name, role: row.role } : null);
 }
 
 function subscribe(onChange: () => void) {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(EVENT, onChange);
+  if (!started) {
+    started = true;
+    void refresh();
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "INITIAL_SESSION") return;
+      // 이 콜백 안에서 바로 Supabase를 부르면 멈출 수 있어 한 박자 늦춘다.
+      setTimeout(() => void refresh(), 0);
+    });
+  }
+  listeners.add(onChange);
   return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(EVENT, onChange);
+    listeners.delete(onChange);
   };
 }
 
-/**
- * 들어와 있는 회원의 등록번호. 없으면 null, 서버 렌더링 중에는 아직 모르므로 undefined.
- */
-export function useMember(): string | null | undefined {
-  return useSyncExternalStore(subscribe, read, () => undefined);
+/** 로그인한 회원. 확인 중이면 undefined, 로그인하지 않았으면 null. */
+export function useMember(): Member | null | undefined {
+  return useSyncExternalStore(subscribe, () => current, () => undefined);
 }
 
-/** 등록번호가 목록에 있으면 들어오고 true, 없으면 false. */
-export function signIn(input: string): boolean {
-  const member = findMember(input);
-  if (!member) return false;
-  memory = member;
-  try {
-    localStorage.setItem(KEY, member);
-  } catch {}
-  window.dispatchEvent(new Event(EVENT));
-  return true;
+function authMessage(error: AuthError): string {
+  if (error.status === 429 || error.code === "over_request_rate_limit")
+    return "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+  if (error.code === "user_banned") return "사용이 중지된 등록번호입니다. 관리자에게 문의해 주세요.";
+  if (error.code === "invalid_credentials") return "등록번호 또는 비밀번호가 맞지 않습니다.";
+  if (error.code === "same_password") return "지금 쓰는 비밀번호와 다른 비밀번호를 입력해 주세요.";
+  if (error.code === "weak_password") return `비밀번호는 ${MIN_PASSWORD}자 이상으로 더 복잡하게 정해 주세요.`;
+  return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
-export function signOut() {
-  memory = null;
+/** 로그인. 성공하면 null, 실패하면 화면에 보여 줄 문구. */
+export async function signIn(numberInput: string, password: string): Promise<string | null> {
+  const number = normalizeNumber(numberInput);
+  if (!number) return "등록번호를 CEN-0001 형식으로 입력해 주세요.";
+  if (!password) return "비밀번호를 입력해 주세요.";
+  const { data, error } = await supabase.auth.signInWithPassword({ email: emailOf(number), password });
+  if (error) return authMessage(error);
+  const { data: row } = await supabase.from("members").select("active").eq("id", data.user.id).maybeSingle();
+  if (!row?.active) {
+    await supabase.auth.signOut();
+    return "사용할 수 없는 등록번호입니다. 관리자에게 문의해 주세요.";
+  }
+  await refresh();
+  return null;
+}
+
+export async function signOut() {
+  await supabase.auth.signOut();
+  setCurrent(null);
+}
+
+/** 회원이 한 명도 없어 첫 관리자(CEN-0001)를 설정해야 하는지 */
+export async function needsFirstAdmin(): Promise<boolean> {
+  const { data } = await supabase.rpc("needs_first_admin");
+  return data === true;
+}
+
+/** 관리자 Edge Function 호출. 실패하면 화면에 보여 줄 문구를 담아 throw한다. */
+export async function callAdmin<T = { ok: true }>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke("admin-members", { body });
+  if (error) {
+    let message = "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    if (error instanceof FunctionsHttpError) {
+      try {
+        message = (await error.context.json()).error ?? message;
+      } catch {}
+    }
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+/** 첫 관리자 CEN-0001을 만들고 바로 로그인한다. 성공하면 null, 실패하면 문구. */
+export async function setUpFirstAdmin(name: string, password: string): Promise<string | null> {
   try {
-    localStorage.removeItem(KEY);
-  } catch {}
-  window.dispatchEvent(new Event(EVENT));
+    await callAdmin({ action: "bootstrap", name, password });
+  } catch (e) {
+    return (e as Error).message;
+  }
+  return signIn(FIRST_ADMIN, password);
+}
+
+/** 내 비밀번호 바꾸기. 성공하면 null, 실패하면 문구. */
+export async function changePassword(password: string): Promise<string | null> {
+  if (password.length < MIN_PASSWORD) return `비밀번호는 ${MIN_PASSWORD}자 이상이어야 합니다.`;
+  const { error } = await supabase.auth.updateUser({ password });
+  return error ? authMessage(error) : null;
 }
