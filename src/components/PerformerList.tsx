@@ -76,6 +76,7 @@ export function PerformerList() {
     try {
       await deletePerformer(p);
       setPerformers((prev) => prev?.filter((x) => x.id !== p.id) ?? null);
+      noteDrafts.delete(p.id);
       setConfirmingDelete(null);
       setActionError("");
     } catch {

@@ -12,10 +12,13 @@ const formatTime = (ms: number) =>
 /** 카드가 잠시 사라져도(수정 화면, 검색) 남겨 두는 펼침 상태와 쓰던 메모 */
 export type NoteDraft = { open: boolean; text: string; id: string | null };
 
-/** 불러온 목록에 이 화면에서 방금 남긴 메모를 더한다. 늦게 온 예전 목록이 새 메모를 지우지 않게 한다. */
-function merge(notes: PerformerNote[], added: PerformerNote[]): PerformerNote[] {
-  const ids = new Set(notes.map((n) => n.id));
-  return [...added.filter((n) => !ids.has(n.id)), ...notes].sort((a, b) => b.createdAt - a.createdAt);
+/**
+ * 불러온 목록에 지금 보이는 메모를 더한다. 메모는 지워지지 않으므로, 늦게 온 예전 목록이
+ * 방금 남긴 메모를 지우지 않게 한다.
+ */
+function merge(fetched: PerformerNote[], shown: PerformerNote[]): PerformerNote[] {
+  const ids = new Set(fetched.map((n) => n.id));
+  return [...shown.filter((n) => !ids.has(n.id)), ...fetched].sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /**
@@ -47,18 +50,18 @@ export function PerformerNotes({
   const savingRef = useRef(false);
   // 지금 초안의 id. 저장에 성공할 때까지 내용을 고쳐도 같은 id라, 응답만 못 받은 제출을
   // 다시 보내도 서버에 한 번만 저장된다.
-  const draftId = useRef<string | null>(draft?.id ?? null);
-  // 이 화면에서 남긴 메모. 불러온 목록에 늘 더한다.
-  const added = useRef<PerformerNote[]>([]);
+  const [draftId, setDraftId] = useState(draft?.id ?? null);
 
-  function saveDraft(next: Partial<NoteDraft>) {
-    onDraftChange({ open, text, id: draftId.current, ...next });
-  }
+  // 카드가 사라졌다 다시 나와도 이어지도록 펼침 상태와 쓰던 메모를 목록에 맡겨 둔다.
+  const keepDraft = useEffectEvent(onDraftChange);
+  useEffect(() => {
+    keepDraft({ open, text, id: draftId });
+  }, [open, text, draftId]);
 
   const syncCount = useEffectEvent(onCountChange);
   useEffect(() => {
-    if (notes) syncCount(notes.length);
-  }, [notes]);
+    if (notes && notes.length !== count) syncCount(notes.length);
+  }, [notes, count]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,7 +70,7 @@ export function PerformerNotes({
       .then((fetched) => {
         if (!current) return;
         setLoadError(false);
-        setNotes(merge(fetched, added.current));
+        setNotes((prev) => merge(fetched, prev ?? []));
       })
       .catch(() => {
         if (current) setLoadError(true);
@@ -77,11 +80,6 @@ export function PerformerNotes({
     };
   }, [open, performerId]);
 
-  function toggle(next: boolean) {
-    setOpen(next);
-    saveDraft({ open: next });
-  }
-
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const body = text.trim();
@@ -90,21 +88,16 @@ export function PerformerNotes({
     savingRef.current = true;
     setSaving(true);
     setError("");
-    draftId.current ??= crypto.randomUUID();
-    saveDraft({});
+    const id = draftId ?? crypto.randomUUID();
+    setDraftId(id);
     try {
-      const note = await addNote(performerId, draftId.current, body);
-      draftId.current = null;
-      added.current.push(note);
-      setNotes((prev) => prev && merge(prev, [note]));
-      if (note.body === body) {
-        setText("");
-        saveDraft({ text: "", id: null });
-      } else {
-        // 응답을 못 받았던 앞선 제출이 사실은 저장되어 있었다. 고친 내용은 그대로 둔다.
-        setError("앞서 보낸 메모가 이미 저장되어 있었습니다. 고친 내용을 남기려면 다시 눌러 주세요.");
-        saveDraft({ id: null });
-      }
+      const note = await addNote(performerId, id, body);
+      setDraftId(null);
+      // 방금 저장한 메모가 가장 최신이다.
+      setNotes((prev) => prev && (prev.some((n) => n.id === note.id) ? prev : [note, ...prev]));
+      if (note.body === body) setText("");
+      // 응답을 못 받았던 앞선 제출이 사실은 저장되어 있었다. 고친 내용은 그대로 둔다.
+      else setError("앞서 보낸 메모가 이미 저장되어 있었습니다. 고친 내용을 남기려면 다시 눌러 주세요.");
     } catch {
       setError("메모를 저장하지 못했습니다. 다시 시도해 주세요.");
     } finally {
@@ -120,7 +113,7 @@ export function PerformerNotes({
       <div className="mt-1.5 sm:col-start-2">
         <button
           type="button"
-          onClick={() => toggle(true)}
+          onClick={() => setOpen(true)}
           aria-expanded={false}
           className={`${smallButton} text-accent`}
         >
@@ -139,7 +132,7 @@ export function PerformerNotes({
         <h3 className="font-semibold">
           메모 기록 <span className="font-mono text-accent">{notes ? notes.length : count}</span>개 · 최신순
         </h3>
-        <button type="button" onClick={() => toggle(false)} aria-expanded className={smallButton}>
+        <button type="button" onClick={() => setOpen(false)} aria-expanded className={smallButton}>
           접기
         </button>
       </div>
@@ -150,7 +143,6 @@ export function PerformerNotes({
             value={text}
             onChange={(e) => {
               setText(e.target.value);
-              saveDraft({ text: e.target.value });
               if (error) setError("");
             }}
             rows={2}
