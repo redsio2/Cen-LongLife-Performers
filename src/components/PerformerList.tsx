@@ -7,6 +7,7 @@ import { canEdit, useMember } from "@/lib/member";
 import { ATTACHMENT_CATEGORIES, type Attachment, type Performer } from "@/lib/performer";
 import { EMPTY_QUERY, filterPerformers, isEmptyQuery, type PerformerQuery } from "@/lib/search";
 import { deletePerformer, listPerformers } from "@/lib/store";
+import { downloadAttachments, downloadPerformersXlsx, totalSize } from "@/lib/download";
 import { useToday } from "@/lib/useToday";
 import { FileThumb, useFileUrl } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
@@ -89,6 +90,20 @@ export function PerformerList() {
   const total = performers?.length ?? 0;
   const searching = !isEmptyQuery(query);
 
+  const [exporting, setExporting] = useState(false);
+  /** 지금 보이는 목록(검색 중이면 검색 결과)을 엑셀로 받는다. */
+  async function exportExcel() {
+    setExporting(true);
+    setActionError("");
+    try {
+      await downloadPerformersXlsx(shown, referenceFor, referenceLabel, searching ? "출연자_검색결과" : "출연자_전체");
+    } catch {
+      setActionError("엑셀 파일을 만들지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (editing) {
     return (
       <section className="mt-5">
@@ -134,17 +149,27 @@ export function PerformerList() {
         )}
       </SearchPanel>
 
-      <div className="mt-5 mb-3 font-semibold" aria-live="polite">
-        {searching ? (
-          <>
-            검색 결과 <b className="font-mono text-accent">{shown.length}</b>명
-            <span className="font-normal text-muted"> / 전체 {total}명</span> · 최신 등록순
-          </>
-        ) : (
-          <>
-            등록된 출연자 <b className="font-mono text-accent">{total}</b>명 · 최신 등록순
-          </>
-        )}
+      <div className="mt-5 mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold" aria-live="polite">
+          {searching ? (
+            <>
+              검색 결과 <b className="font-mono text-accent">{shown.length}</b>명
+              <span className="font-normal text-muted"> / 전체 {total}명</span> · 최신 등록순
+            </>
+          ) : (
+            <>
+              등록된 출연자 <b className="font-mono text-accent">{total}</b>명 · 최신 등록순
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={shown.length === 0 || exporting}
+          onClick={exportExcel}
+          className="rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-accent disabled:opacity-40"
+        >
+          {exporting ? "만드는 중…" : searching ? "검색 결과 엑셀로 받기" : "엑셀로 받기"}
+        </button>
       </div>
 
       {actionError && (
@@ -252,7 +277,7 @@ export function PerformerList() {
                   </span>
                 )}
               </div>
-              {(p.disease || p.fee) && (
+              {(p.disease || p.fee || p.contact) && (
                 <div className="flex min-w-0 flex-wrap gap-x-3.5 text-sm sm:col-start-2">
                   {p.disease && (
                     <span className="min-w-0 break-words">
@@ -266,6 +291,14 @@ export function PerformerList() {
                       {p.fee}
                     </span>
                   )}
+                  {p.contact && (
+                    <span className="min-w-0 break-words">
+                      <b className="mr-1.5 text-[13px] font-medium text-muted">연락처</b>
+                      <a href={`tel:${p.contact.replace(/[^\d+]/g, "")}`} className="tabular-nums hover:underline">
+                        {p.contact}
+                      </a>
+                    </span>
+                  )}
                 </div>
               )}
               {p.memo && (
@@ -275,15 +308,10 @@ export function PerformerList() {
                 </p>
               )}
               {p.attachments.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5 sm:col-start-2">
-                  {p.attachments.map((f) => (
-                    <AttachmentChip
-                      key={f.id}
-                      file={f}
-                      onView={(caption) => setViewing({ path: f.path, caption: `${p.name} · ${caption}` })}
-                    />
-                  ))}
-                </div>
+                <Attachments
+                  performer={p}
+                  onView={(path, caption) => setViewing({ path, caption: `${p.name} · ${caption}` })}
+                />
               )}
               {confirmingDelete === p.id && (
                 <div
@@ -325,6 +353,116 @@ export function PerformerList() {
 
 const chipClass =
   "inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-bg py-0.5 pr-2 pl-0.5 text-xs";
+const smallButton = "rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold";
+
+/** 출연자 한 명의 첨부파일. '파일 받기'를 누르면 골라서 내려받을 수 있다. */
+function Attachments({ performer, onView }: { performer: Performer; onView: (path: string, caption: string) => void }) {
+  const files = performer.attachments;
+  const [picking, setPicking] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const chosen = files.filter((f) => selected.has(f.id));
+  const allChosen = chosen.length === files.length;
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function download() {
+    setBusy(true);
+    setError("");
+    try {
+      await downloadAttachments(performer.name, chosen);
+      setPicking(false);
+      setSelected(new Set());
+    } catch {
+      setError("파일을 받지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!picking)
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 sm:col-start-2">
+        {files.map((f) => (
+          <AttachmentChip key={f.id} file={f} onView={(caption) => onView(f.path, caption)} />
+        ))}
+        <button
+          type="button"
+          onClick={() => {
+            setPicking(true);
+            setSelected(new Set(files.length === 1 ? [files[0].id] : []));
+          }}
+          className={`${smallButton} text-accent`}
+        >
+          파일 받기
+        </button>
+      </div>
+    );
+
+  return (
+    <fieldset className="mt-2 grid min-w-0 gap-2 rounded-lg border border-line bg-bg p-2.5 text-[13px] sm:col-start-2">
+      <legend className="sr-only">{performer.name} 첨부파일 고르기</legend>
+      <label className="flex items-center gap-2 font-semibold">
+        <input
+          type="checkbox"
+          checked={allChosen}
+          onChange={() => setSelected(allChosen ? new Set() : new Set(files.map((f) => f.id)))}
+          className="accent-accent"
+        />
+        전체 선택
+      </label>
+      <ul className="grid gap-1">
+        {files.map((f) => (
+          <li key={f.id}>
+            <label className="flex min-w-0 cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selected.has(f.id)}
+                onChange={() => toggle(f.id)}
+                className="accent-accent"
+              />
+              <FileThumb source={{ path: f.path }} name={f.name} type={f.type} className="size-6" />
+              <span className="text-muted">{categoryLabel(f.category)}</span>
+              <span className="min-w-0 flex-1 truncate" title={f.name}>
+                {f.name}
+              </span>
+              <span className="font-mono text-[11px] text-muted">{totalSize([f])}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <span className="mr-auto text-xs text-muted">
+          {chosen.length > 1 ? "여러 파일은 zip 하나로 묶어서 받습니다." : ""}
+        </span>
+        <button type="button" onClick={() => setPicking(false)} className={smallButton}>
+          취소
+        </button>
+        <button
+          type="button"
+          disabled={chosen.length === 0 || busy}
+          onClick={download}
+          className="rounded-md border border-accent bg-accent px-2.5 py-1 text-xs font-semibold text-accent-ink disabled:opacity-40"
+        >
+          {busy ? "받는 중…" : `선택한 ${chosen.length}개 받기${chosen.length ? ` (${totalSize(chosen)})` : ""}`}
+        </button>
+      </div>
+    </fieldset>
+  );
+}
 
 /** 첨부파일 하나. 이미지는 크게 보기, 그 밖의 파일은 새 탭에서 연다. */
 function AttachmentChip({ file, onView }: { file: Attachment; onView: (caption: string) => void }) {

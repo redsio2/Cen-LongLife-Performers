@@ -28,6 +28,7 @@ type PerformerRow = {
   friend_memo: string;
   birth: string;
   fee: string;
+  contact: string;
   disease: string;
   memo: string;
   performer_attachments: AttachmentRow[];
@@ -48,6 +49,7 @@ function fromRow(r: PerformerRow): Performer {
     friendMemo: r.friend_memo,
     birth: r.birth,
     fee: r.fee,
+    contact: r.contact,
     disease: r.disease,
     memo: r.memo,
     attachments: r.performer_attachments.map(({ id, category, name, size, type, path }) => ({
@@ -73,6 +75,7 @@ function toRow(v: PerformerInput) {
     friend_memo: v.friendMemo,
     birth: v.birth,
     fee: v.fee,
+    contact: v.contact,
     disease: v.disease,
     memo: v.memo,
   };

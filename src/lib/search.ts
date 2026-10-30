@@ -2,7 +2,7 @@ import { manAge } from "./date";
 import { typeLabel, type Performer, type PerformerType } from "./performer";
 
 export type PerformerQuery = {
-  /** 이름·프로그램·아이템·유형·회차·질병·메모에서 찾는 검색어 */
+  /** 이름·프로그램·아이템·유형·회차·질병·메모·연락처에서 찾는 검색어 */
   keyword: string;
   /** 비어 있으면 모든 유형 */
   types: PerformerType[];
@@ -38,12 +38,15 @@ function inRange(value: number | null, from: string, to: string): boolean {
   return (lo == null || value >= lo) && (hi == null || value <= hi);
 }
 
-/** 검색어 하나하나가 이름·프로그램·아이템·유형·"N회"·질병·메모 중 어딘가에 들어 있어야 한다. */
+/**
+ * 검색어 하나하나가 이름·프로그램·아이템·유형·"N회"·질병·메모·연락처 중 어딘가에 들어 있어야 한다.
+ * 연락처는 하이픈 없이 숫자만으로도 찾는다 (예: 01012345678, 5678).
+ */
 function matchesKeyword(p: Performer, keyword: string): boolean {
   const words = keyword.trim().split(/\s+/).filter(Boolean).map(normalize);
   if (words.length === 0) return true;
   const haystack = normalize(
-    `${p.name} ${p.program ?? ""} ${p.item} ${typeLabel(p)} ${p.episode}회 ${p.disease ?? ""} ${p.memo ?? ""}`,
+    `${p.name} ${p.program} ${p.item} ${typeLabel(p)} ${p.episode}회 ${p.disease} ${p.memo} ${p.contact} ${p.contact.replace(/\D/g, "")}`,
   );
   return words.every((w) => haystack.includes(w));
 }

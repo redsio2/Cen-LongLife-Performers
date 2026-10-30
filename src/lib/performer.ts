@@ -47,6 +47,8 @@ export type Performer = {
   birth: string;
   /** 출연료. 금액과 조건을 자유롭게 적는다 (예: 100만원, 지인 출연 포함) */
   fee: string;
+  /** 연락처 (예: 010-1234-5678). 선택 입력 */
+  contact: string;
   /** 질병 유형 (예: 폐암 4기). 선택 입력 */
   disease: string;
   /** 제작진 메모 (예: 까다로움, 블랙리스트). 선택 입력 */

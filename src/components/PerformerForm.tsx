@@ -110,6 +110,7 @@ export function PerformerForm({ performer, onDone }: { performer?: Performer; on
       birth,
       disease: text("disease"),
       fee: text("fee"),
+      contact: text("contact"),
       memo: text("memo"),
     };
     const found = validatePerformer(input, today);
@@ -266,18 +267,32 @@ export function PerformerForm({ performer, onDone }: { performer?: Performer; on
           {errors.type && <p className="text-xs text-danger">{errors.type}</p>}
         </div>
 
-        <Field id={fid("fee")} label="출연료" error={errors.fee}>
-          <input
-            id={fid("fee")}
-            name="fee"
-            type="text"
-            autoComplete="off"
-            defaultValue={performer?.fee}
-            placeholder="예: 100만원, 지인 출연 포함"
-            aria-invalid={!!errors.fee}
-            className={inputClass}
-          />
-        </Field>
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field id={fid("fee")} label="출연료" error={errors.fee}>
+            <input
+              id={fid("fee")}
+              name="fee"
+              type="text"
+              autoComplete="off"
+              defaultValue={performer?.fee}
+              placeholder="예: 100만원, 지인 출연 포함"
+              aria-invalid={!!errors.fee}
+              className={inputClass}
+            />
+          </Field>
+          <Field id={fid("contact")} label="연락처" optional>
+            <input
+              id={fid("contact")}
+              name="contact"
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+              defaultValue={performer?.contact}
+              placeholder="예: 010-1234-5678"
+              className={inputClass}
+            />
+          </Field>
+        </div>
 
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field id={fid("birth")} label="생년월일" error={errors.birth}>
