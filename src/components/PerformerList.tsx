@@ -12,7 +12,7 @@ import { useToday } from "@/lib/useToday";
 import { FileThumb, useFileUrl } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
 import { PerformerForm } from "./PerformerForm";
-import { PerformerNotes } from "./PerformerNotes";
+import { PerformerNotes, type NoteDraft } from "./PerformerNotes";
 import { SearchPanel } from "./SearchPanel";
 import { TypeBadge } from "./TypeBadge";
 
@@ -33,6 +33,8 @@ export function PerformerList() {
   /** 삭제를 한 번 더 확인하는 중인 출연자 id */
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  /** 출연자별 메모 칸의 펼침 상태와 쓰던 메모. 수정 화면이나 검색으로 카드가 사라져도 남는다. */
+  const [noteDrafts] = useState(() => new Map<string, NoteDraft>());
 
   const member = useMember();
   const memberId = member?.id;
@@ -321,6 +323,8 @@ export function PerformerList() {
                 onCountChange={(noteCount) =>
                   setPerformers((prev) => prev?.map((x) => (x.id === p.id ? { ...x, noteCount } : x)) ?? null)
                 }
+                draft={noteDrafts.get(p.id)}
+                onDraftChange={(d) => noteDrafts.set(p.id, d)}
               />
               {confirmingDelete === p.id && (
                 <div

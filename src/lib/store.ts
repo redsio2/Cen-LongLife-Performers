@@ -170,24 +170,40 @@ export async function deletePerformer(p: Performer): Promise<void> {
   if (error) throw error;
 }
 
+const NOTE_COLUMNS = "id, body, created_at";
+type NoteRow = { id: string; body: string; created_at: string };
+const toNote = (n: NoteRow): PerformerNote => ({ id: n.id, body: n.body, createdAt: Date.parse(n.created_at) });
+
 /** 한 출연자의 메모만, 최신순으로 */
 export async function listNotes(performerId: string): Promise<PerformerNote[]> {
   const { data, error } = await supabase
     .from("performer_notes")
-    .select("id, body, created_at")
+    .select(NOTE_COLUMNS)
     .eq("performer_id", performerId)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return data.map((n) => ({ id: n.id, body: n.body, createdAt: Date.parse(n.created_at) }));
+  return data.map(toNote);
 }
 
 /**
- * 메모를 남긴다. id는 화면이 초안마다 미리 정한 값이라, 같은 제출이 두 번 오면
- * 두 번째는 기본 키 중복(23505)으로 막히고 이미 저장된 것으로 본다.
+ * 메모를 남기고 저장된 메모를 돌려준다. id는 화면이 초안마다 미리 정한 값이라, 같은 제출이
+ * 두 번 오면 두 번째는 기본 키 중복(23505)으로 막히고 먼저 저장된 메모를 돌려준다.
  */
-export async function addNote(performerId: string, id: string, body: string): Promise<void> {
-  const { error } = await supabase.from("performer_notes").insert({ id, performer_id: performerId, body });
-  if (error && error.code !== "23505") throw error;
+export async function addNote(performerId: string, id: string, body: string): Promise<PerformerNote> {
+  const { data, error } = await supabase
+    .from("performer_notes")
+    .insert({ id, performer_id: performerId, body })
+    .select(NOTE_COLUMNS)
+    .single();
+  if (!error) return toNote(data);
+  if (error.code !== "23505") throw error;
+  const { data: saved, error: readError } = await supabase
+    .from("performer_notes")
+    .select(NOTE_COLUMNS)
+    .eq("id", id)
+    .single();
+  if (readError) throw readError;
+  return toNote(saved);
 }
 
 // 비공개 파일은 잠깐 쓸 수 있는 서명된 주소로 연다. 같은 파일은 한 시간 동안 같은 주소를 다시 쓴다.
