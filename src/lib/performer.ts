@@ -54,9 +54,16 @@ export type Performer = {
   /** 제작진 메모 (예: 까다로움, 블랙리스트). 선택 입력 */
   memo: string;
   attachments: Attachment[];
+  /** 출연자에게 남긴 메모(PerformerNote) 개수. 내용은 펼칠 때 따로 불러온다. */
+  noteCount: number;
 };
 
-export type PerformerInput = Omit<Performer, "id" | "createdAt" | "updatedAt" | "attachments">;
+export type PerformerInput = Omit<Performer, "id" | "createdAt" | "updatedAt" | "attachments" | "noteCount">;
+
+/** 출연자에게 남긴 메모 한 건. 출연자 하나에 여러 개가 쌓인다. */
+export type PerformerNote = { id: string; body: string; createdAt: number };
+
+export const MAX_NOTE_LENGTH = 2000;
 export type PerformerErrors = Partial<Record<keyof PerformerInput, string>>;
 
 export function validatePerformer(v: PerformerInput, today: string): PerformerErrors {

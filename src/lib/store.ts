@@ -1,4 +1,11 @@
-import type { Attachment, NewAttachment, Performer, PerformerInput, PerformerType } from "./performer";
+import type {
+  Attachment,
+  NewAttachment,
+  Performer,
+  PerformerInput,
+  PerformerNote,
+  PerformerType,
+} from "./performer";
 import { supabase } from "./supabase";
 
 // 출연자는 Supabase 데이터베이스에, 첨부파일은 비공개 저장소(attachments 버킷)에 둔다.
@@ -32,6 +39,7 @@ type PerformerRow = {
   disease: string;
   memo: string;
   performer_attachments: AttachmentRow[];
+  performer_notes: { count: number }[];
 };
 
 function fromRow(r: PerformerRow): Performer {
@@ -60,6 +68,7 @@ function fromRow(r: PerformerRow): Performer {
       type,
       path,
     })),
+    noteCount: r.performer_notes[0]?.count ?? 0,
   };
 }
 
@@ -85,7 +94,7 @@ function toRow(v: PerformerInput) {
 export async function listPerformers(): Promise<Performer[]> {
   const { data, error } = await supabase
     .from("performers")
-    .select("*, performer_attachments(*)")
+    .select("*, performer_attachments(*), performer_notes(count)")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as PerformerRow[]).map(fromRow);
@@ -159,6 +168,26 @@ export async function deletePerformer(p: Performer): Promise<void> {
   await removeAttachments(p.attachments);
   const { error } = await supabase.from("performers").delete().eq("id", p.id);
   if (error) throw error;
+}
+
+/** 한 출연자의 메모만, 최신순으로 */
+export async function listNotes(performerId: string): Promise<PerformerNote[]> {
+  const { data, error } = await supabase
+    .from("performer_notes")
+    .select("id, body, created_at")
+    .eq("performer_id", performerId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data.map((n) => ({ id: n.id, body: n.body, createdAt: Date.parse(n.created_at) }));
+}
+
+/**
+ * 메모를 남긴다. id는 화면이 초안마다 미리 정한 값이라, 같은 제출이 두 번 오면
+ * 두 번째는 기본 키 중복(23505)으로 막히고 이미 저장된 것으로 본다.
+ */
+export async function addNote(performerId: string, id: string, body: string): Promise<void> {
+  const { error } = await supabase.from("performer_notes").insert({ id, performer_id: performerId, body });
+  if (error && error.code !== "23505") throw error;
 }
 
 // 비공개 파일은 잠깐 쓸 수 있는 서명된 주소로 연다. 같은 파일은 한 시간 동안 같은 주소를 다시 쓴다.

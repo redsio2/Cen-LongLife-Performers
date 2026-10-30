@@ -12,6 +12,7 @@ import { useToday } from "@/lib/useToday";
 import { FileThumb, useFileUrl } from "./FileThumb";
 import { ImageViewer } from "./ImageViewer";
 import { PerformerForm } from "./PerformerForm";
+import { PerformerNotes } from "./PerformerNotes";
 import { SearchPanel } from "./SearchPanel";
 import { TypeBadge } from "./TypeBadge";
 
@@ -313,6 +314,14 @@ export function PerformerList() {
                   onView={(path, caption) => setViewing({ path, caption: `${p.name} · ${caption}` })}
                 />
               )}
+              <PerformerNotes
+                performerId={p.id}
+                count={p.noteCount}
+                editable={editable}
+                onCountChange={(noteCount) =>
+                  setPerformers((prev) => prev?.map((x) => (x.id === p.id ? { ...x, noteCount } : x)) ?? null)
+                }
+              />
               {confirmingDelete === p.id && (
                 <div
                   role="alert"
