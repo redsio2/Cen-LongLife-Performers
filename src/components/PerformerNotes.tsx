@@ -9,6 +9,19 @@ const smallButton = "rounded-md border border-line bg-surface px-2.5 py-1 text-x
 const formatTime = (ms: number) =>
   new Date(ms).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 
+/**
+ * 메모 초안 id. crypto.randomUUID는 https·localhost에서만 있으므로, 없으면
+ * (예: 휴대폰에서 http://192.168.x.x 로 개발 서버 접속) 같은 형식을 직접 만든다.
+ */
+function newId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 /** 카드가 잠시 사라져도(수정 화면, 검색) 남겨 두는 펼침 상태와 쓰던 메모 */
 export type NoteDraft = { open: boolean; text: string; id: string | null };
 
@@ -60,7 +73,8 @@ export function PerformerNotes({
 
   const syncCount = useEffectEvent(onCountChange);
   useEffect(() => {
-    if (notes && notes.length !== count) syncCount(notes.length);
+    // 메모는 지워지지 않아 개수는 늘기만 한다. 목록이 더 새 개수를 받아 왔으면 되돌리지 않는다.
+    if (notes && notes.length > count) syncCount(notes.length);
   }, [notes, count]);
 
   useEffect(() => {
@@ -88,14 +102,17 @@ export function PerformerNotes({
     savingRef.current = true;
     setSaving(true);
     setError("");
-    const id = draftId ?? crypto.randomUUID();
-    setDraftId(id);
     try {
+      const id = draftId ?? newId();
+      setDraftId(id);
       const note = await addNote(performerId, id, body);
+      const saved = note.body === body;
       setDraftId(null);
+      // 저장 중에 카드가 사라졌어도 맡겨 둔 초안에 저장된 메모가 남지 않게 바로 알린다.
+      onDraftChange({ open, text: saved ? "" : text, id: null });
       // 방금 저장한 메모가 가장 최신이다.
       setNotes((prev) => prev && (prev.some((n) => n.id === note.id) ? prev : [note, ...prev]));
-      if (note.body === body) setText("");
+      if (saved) setText("");
       // 응답을 못 받았던 앞선 제출이 사실은 저장되어 있었다. 고친 내용은 그대로 둔다.
       else setError("앞서 보낸 메모가 이미 저장되어 있었습니다. 고친 내용을 남기려면 다시 눌러 주세요.");
     } catch {
